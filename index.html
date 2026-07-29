@@ -24,8 +24,8 @@
         /* === 完璧なPDF印刷のための設定 === */
         @media print {
             @page {
-                size: A4 landscape;
-                margin: 15mm;
+                size: A4 landscape; /* A4 横向き */
+                margin: 10mm;       /* 余白 */
             }
             body {
                 background-color: white !important;
@@ -33,10 +33,28 @@
                 -webkit-print-color-adjust: exact !important;
                 print-color-adjust: exact !important;
             }
-            header, .no-print { display: none !important; }
-            main { margin: 0 !important; padding: 0 !important; width: 100% !important; max-width: 100% !important; }
-            table { width: 100% !important; max-width: 100% !important; border-collapse: collapse !important; }
-            th, td { border: 1px solid #9ca3af !important; word-wrap: break-word !important; }
+            /* UI要素を隠す */
+            header, .no-print {
+                display: none !important;
+            }
+            /* メインコンテンツを全画面に */
+            main {
+                margin: 0 !important;
+                padding: 0 !important;
+                width: 100% !important;
+                max-width: 100% !important;
+            }
+            /* 表がはみ出さないようにA4幅に調整 */
+            table {
+                width: 100% !important;
+                max-width: 100% !important;
+                border-collapse: collapse !important;
+            }
+            th, td {
+                border: 1px solid #9ca3af !important;
+                word-wrap: break-word !important;
+            }
+            /* 背景色を印刷に強制反映 */
             .print\:bg-gray-50 { background-color: #f9fafb !important; }
             .print\:bg-blue-50 { background-color: #eff6ff !important; }
             .print\:bg-blue-100 { background-color: #dbeafe !important; }
@@ -49,16 +67,16 @@
     <div id="root"></div>
 
     <script type="text/babel">
-        // ★★★ Firebase の設定（Step 3 で取得したものをここに貼り付けてください） ★★★
+        // ★★★ Firebase の設定 ★★★
         const firebaseConfig = {
- apiKey: "AIzaSyCmS-d5UX-8-t-x_vueFTPJexWhhOeyqJY",
-  authDomain: "mendan01-4c723.firebaseapp.com",
-  databaseURL: "https://mendan01-4c723-default-rtdb.asia-southeast1.firebasedatabase.app",
-  projectId: "mendan01-4c723",
-  storageBucket: "mendan01-4c723.firebasestorage.app",
-  messagingSenderId: "102734133317",
-  appId: "1:102734133317:web:3c32d344fbe3e60a8b0b2c",
-  measurementId: "G-WQWMZ5GR5V"
+            apiKey: "AIzaSyCmS-d5UX-8-t-x_vueFTPJexWhhOeyqJY",
+            authDomain: "mendan01-4c723.firebaseapp.com",
+            databaseURL: "https://mendan01-4c723-default-rtdb.asia-southeast1.firebasedatabase.app",
+            projectId: "mendan01-4c723",
+            storageBucket: "mendan01-4c723.firebasestorage.app",
+            messagingSenderId: "102734133317",
+            appId: "1:102734133317:web:3c32d344fbe3e60a8b0b2c",
+            measurementId: "G-WQWMZ5GR5V"
         };
 
         // Firebaseの初期化
@@ -75,12 +93,13 @@
             const [selectedClass, setSelectedClass] = useState('');
             
             // 2. 面談設定ステート (管理者用)
-            const [settings, setSettings] = useState({
+            const defaultSettings = {
                 dates: ['', '', '', '', '', ''], 
                 startTime: '14:00',
                 endTime: '16:30',
                 slotsPerHour: 4 
-            });
+            };
+            const [settings, setSettings] = useState(defaultSettings);
             
             // 3. 予約データステート
             const [bookings, setBookings] = useState({}); 
@@ -94,7 +113,7 @@
             const [cancelModal, setCancelModal] = useState({ isOpen: false, date: '', time: '', password: '', error: '', type: '' });
             const [bulkModal, setBulkModal] = useState({ isOpen: false, selectedCells: [], password: '', error: '' });
 
-            // 5. ドラッグ操作ステート
+            // 5. ドラッグ操作（一括選択）ステート
             const [isDragging, setIsDragging] = useState(false);
             const [dragSelected, setDragSelected] = useState([]);
 
@@ -114,7 +133,6 @@
                 settingsRef.on('value', (snapshot) => {
                     const data = snapshot.val();
                     if (data) {
-                        // Firebaseは空配列を消してしまう性質があるため、初期値を担保する
                         setSettings({
                             dates: data.dates || ['', '', '', '', '', ''],
                             startTime: data.startTime || '14:00',
@@ -219,7 +237,6 @@
             // ==========================================
             // Firebaseへのデータ書き込み処理
             // ==========================================
-
             const saveBooking = () => {
                 if (!bookingModal.studentName.trim()) {
                     setBookingModal({...bookingModal, error: '児童氏名を入力してください。'});
@@ -263,12 +280,28 @@
                 setBulkModal({ isOpen: false, selectedCells: [], password: '', error: '' });
             };
 
+            // 設定をFirebaseに保存する
             const handleSaveSettings = () => {
-                // Firebaseに設定を保存して閉じる
-                db.ref('settings').set(settings);
-                setIsSettingsOpen(false);
+                db.ref('settings').set(settings).then(() => {
+                    setIsSettingsOpen(false);
+                });
             };
 
+            // 【新機能】全ての予約と設定をリセットする
+            const handleResetAll = () => {
+                const confirmed = window.confirm("本当に「すべての予約」と「設定」を完全に削除してよろしいですか？\nこの操作は取り消せません。");
+                if (confirmed) {
+                    // Firebaseのbookingsとsettingsを空にする
+                    db.ref('bookings').remove();
+                    db.ref('settings').remove();
+                    // ローカルのステートも初期化
+                    setSettings(defaultSettings);
+                    setIsSettingsOpen(false);
+                    alert("すべてのデータを削除し、初期状態にリセットしました。");
+                }
+            };
+
+            // ブラウザ標準機能で印刷/PDF出力
             const handleDownloadPDF = () => {
                 if (!selectedGrade || !selectedClass) return;
                 window.print();
@@ -325,9 +358,10 @@
                     <main id="pdf-content" className="w-full max-w-6xl mx-auto px-4 mt-6">
                         
                         {/* 印刷時のみ表示されるタイトル */}
-                        <div className="hidden print:block mb-6 text-center">
-                            <h2 className="text-2xl font-bold text-gray-800">北谷第二小学校 個人面談予約表</h2>
-                            <p className="text-xl mt-1 font-bold text-gray-700">{selectedGrade}年 {selectedClass}組</p>
+                        <div className="hidden print:block mb-4 text-center">
+                            <h2 className="text-xl font-bold text-gray-800">
+                                北谷第二小学校 個人面談予約表 <span className="ml-4">{selectedGrade}年 {selectedClass}組</span>
+                            </h2>
                         </div>
 
                         {!selectedGrade || !selectedClass ? (
@@ -449,7 +483,16 @@
                         {isSettingsOpen && (
                             <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
                                 <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-md max-h-screen overflow-y-auto">
-                                    <h3 className="text-xl font-bold mb-4 border-b pb-2">全体設定 (管理者用)</h3>
+                                    <div className="flex justify-between items-center mb-4 border-b pb-2">
+                                        <h3 className="text-xl font-bold">全体設定 (管理者用)</h3>
+                                        <button 
+                                            onClick={handleResetAll} 
+                                            className="bg-red-600 hover:bg-red-700 text-white text-sm font-bold py-1 px-3 rounded shadow"
+                                            title="予約と設定をすべてリセットします"
+                                        >
+                                            <i className="fas fa-trash-alt mr-1"></i>全削除
+                                        </button>
+                                    </div>
                                     
                                     <div className="mb-6">
                                         <label className="block text-gray-700 font-bold mb-2">面談日 (最大6日間)</label>
@@ -496,7 +539,8 @@
                                     </div>
 
                                     <div className="flex justify-end gap-2 pt-4 border-t">
-                                        <button onClick={() => setIsSettingsOpen(false)} className="bg-gray-300 hover:bg-gray-400 font-bold py-2 px-4 rounded mr-2">キャンセル</button>
+                                        <button onClick={() => setIsSettingsOpen(false)} className="bg-gray-300 hover:bg-gray-400 font-bold py-2 px-4 rounded">キャンセル</button>
+                                        {/* 保存ボタンを復活 */}
                                         <button onClick={handleSaveSettings} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">保存して閉じる</button>
                                     </div>
                                 </div>
