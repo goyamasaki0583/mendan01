@@ -6,6 +6,9 @@
     <title>北谷第二小学校個人面談ネット予約サイト</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Firebase (Compat版) -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
     <!-- React & ReactDOM -->
     <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
@@ -21,8 +24,8 @@
         /* === 完璧なPDF印刷のための設定 === */
         @media print {
             @page {
-                size: A4 landscape; /* A4 横向き */
-                margin: 10mm 15mm;  /* 上下10mm, 左右15mmにして縦幅を確保 */
+                size: A4 landscape;
+                margin: 15mm;
             }
             body {
                 background-color: white !important;
@@ -30,28 +33,10 @@
                 -webkit-print-color-adjust: exact !important;
                 print-color-adjust: exact !important;
             }
-            /* UI要素を隠す */
-            header, .no-print {
-                display: none !important;
-            }
-            /* メインコンテンツを全画面に */
-            main {
-                margin: 0 !important;
-                padding: 0 !important;
-                width: 100% !important;
-                max-width: 100% !important;
-            }
-            /* 表がはみ出さないようにA4幅に調整 */
-            table {
-                width: 100% !important;
-                max-width: 100% !important;
-                border-collapse: collapse !important;
-            }
-            th, td {
-                border: 1px solid #9ca3af !important;
-                word-wrap: break-word !important;
-            }
-            /* 背景色を印刷に強制反映 */
+            header, .no-print { display: none !important; }
+            main { margin: 0 !important; padding: 0 !important; width: 100% !important; max-width: 100% !important; }
+            table { width: 100% !important; max-width: 100% !important; border-collapse: collapse !important; }
+            th, td { border: 1px solid #9ca3af !important; word-wrap: break-word !important; }
             .print\:bg-gray-50 { background-color: #f9fafb !important; }
             .print\:bg-blue-50 { background-color: #eff6ff !important; }
             .print\:bg-blue-100 { background-color: #dbeafe !important; }
@@ -64,6 +49,24 @@
     <div id="root"></div>
 
     <script type="text/babel">
+        // ★★★ Firebase の設定（Step 3 で取得したものをここに貼り付けてください） ★★★
+        const firebaseConfig = {
+ apiKey: "AIzaSyCmS-d5UX-8-t-x_vueFTPJexWhhOeyqJY",
+  authDomain: "mendan01-4c723.firebaseapp.com",
+  databaseURL: "https://mendan01-4c723-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "mendan01-4c723",
+  storageBucket: "mendan01-4c723.firebasestorage.app",
+  messagingSenderId: "102734133317",
+  appId: "1:102734133317:web:3c32d344fbe3e60a8b0b2c",
+  measurementId: "G-WQWMZ5GR5V"
+        };
+
+        // Firebaseの初期化
+        if (!firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
+        }
+        const db = firebase.database();
+
         const { useState, useEffect, useMemo, useRef } = React;
 
         const App = () => {
@@ -71,7 +74,7 @@
             const [selectedGrade, setSelectedGrade] = useState('');
             const [selectedClass, setSelectedClass] = useState('');
             
-            // 2. 面談設定ステート (管理者用) - デフォルト 14:00〜16:30
+            // 2. 面談設定ステート (管理者用)
             const [settings, setSettings] = useState({
                 dates: ['', '', '', '', '', ''], 
                 startTime: '14:00',
@@ -91,9 +94,41 @@
             const [cancelModal, setCancelModal] = useState({ isOpen: false, date: '', time: '', password: '', error: '', type: '' });
             const [bulkModal, setBulkModal] = useState({ isOpen: false, selectedCells: [], password: '', error: '' });
 
-            // 5. ドラッグ操作（一括選択）ステート
+            // 5. ドラッグ操作ステート
             const [isDragging, setIsDragging] = useState(false);
             const [dragSelected, setDragSelected] = useState([]);
+
+            // ==========================================
+            // Firebaseとの同期処理 (コンポーネント読み込み時)
+            // ==========================================
+            useEffect(() => {
+                // 予約データをリアルタイムでリッスン
+                const bookingsRef = db.ref('bookings');
+                bookingsRef.on('value', (snapshot) => {
+                    const data = snapshot.val();
+                    setBookings(data || {});
+                });
+
+                // 設定データをリアルタイムでリッスン
+                const settingsRef = db.ref('settings');
+                settingsRef.on('value', (snapshot) => {
+                    const data = snapshot.val();
+                    if (data) {
+                        // Firebaseは空配列を消してしまう性質があるため、初期値を担保する
+                        setSettings({
+                            dates: data.dates || ['', '', '', '', '', ''],
+                            startTime: data.startTime || '14:00',
+                            endTime: data.endTime || '16:30',
+                            slotsPerHour: data.slotsPerHour || 4
+                        });
+                    }
+                });
+
+                return () => {
+                    bookingsRef.off();
+                    settingsRef.off();
+                };
+            }, []);
 
             // --- Helper Functions ---
             const formatMonthDay = (dateStr) => {
@@ -181,17 +216,18 @@
                 return () => window.removeEventListener('mouseup', handleGlobalMouseUp);
             }, [isDragging, dragSelected, selectedGrade, selectedClass, bookings]);
 
-            // --- 予約・削除・ブロック処理 ---
+            // ==========================================
+            // Firebaseへのデータ書き込み処理
+            // ==========================================
+
             const saveBooking = () => {
                 if (!bookingModal.studentName.trim()) {
                     setBookingModal({...bookingModal, error: '児童氏名を入力してください。'});
                     return;
                 }
                 const key = `${selectedGrade}-${selectedClass}-${bookingModal.date}-${bookingModal.time}`;
-                setBookings({
-                    ...bookings,
-                    [key]: { studentName: bookingModal.studentName, isBlocked: false }
-                });
+                // Firebaseに書き込み
+                db.ref('bookings/' + key).set({ studentName: bookingModal.studentName, isBlocked: false });
                 setBookingModal({ isOpen: false, date: '', time: '', studentName: '', error: '' });
             };
 
@@ -201,9 +237,8 @@
                     return;
                 }
                 const key = `${selectedGrade}-${selectedClass}-${cancelModal.date}-${cancelModal.time}`;
-                const newBookings = { ...bookings };
-                delete newBookings[key];
-                setBookings(newBookings);
+                // Firebaseから削除
+                db.ref('bookings/' + key).remove();
                 setCancelModal({ isOpen: false, date: '', time: '', password: '', error: '', type: '' });
             };
 
@@ -213,22 +248,27 @@
                     return;
                 }
                 
-                const newBookings = { ...bookings };
+                const updates = {};
                 bulkModal.selectedCells.forEach(({date, time}) => {
                     const key = `${selectedGrade}-${selectedClass}-${date}-${time}`;
                     if (actionType === 'block') {
-                        newBookings[key] = { isBlocked: true };
+                        updates[key] = { isBlocked: true };
                     } else if (actionType === 'unblock') {
-                        if (newBookings[key] && newBookings[key].isBlocked) {
-                            delete newBookings[key];
-                        }
+                        updates[key] = null; // nullで削除
                     }
                 });
-                setBookings(newBookings);
+                
+                // Firebaseに一括更新
+                db.ref('bookings').update(updates);
                 setBulkModal({ isOpen: false, selectedCells: [], password: '', error: '' });
             };
 
-            // ブラウザ標準機能で印刷/PDF出力
+            const handleSaveSettings = () => {
+                // Firebaseに設定を保存して閉じる
+                db.ref('settings').set(settings);
+                setIsSettingsOpen(false);
+            };
+
             const handleDownloadPDF = () => {
                 if (!selectedGrade || !selectedClass) return;
                 window.print();
@@ -284,10 +324,10 @@
                     {/* メインコンテンツ */}
                     <main id="pdf-content" className="w-full max-w-6xl mx-auto px-4 mt-6">
                         
-                        {/* 印刷時のみ表示されるタイトル（1行にまとめる） */}
-                        <div className="hidden print:flex mb-4 justify-center items-baseline gap-6">
-                            <h2 className="text-2xl font-bold text-gray-800 m-0">北谷第二小学校 個人面談予約表</h2>
-                            <p className="text-xl font-bold text-gray-700 m-0">{selectedGrade}年 {selectedClass}組</p>
+                        {/* 印刷時のみ表示されるタイトル */}
+                        <div className="hidden print:block mb-6 text-center">
+                            <h2 className="text-2xl font-bold text-gray-800">北谷第二小学校 個人面談予約表</h2>
+                            <p className="text-xl mt-1 font-bold text-gray-700">{selectedGrade}年 {selectedClass}組</p>
                         </div>
 
                         {!selectedGrade || !selectedClass ? (
@@ -456,7 +496,8 @@
                                     </div>
 
                                     <div className="flex justify-end gap-2 pt-4 border-t">
-                                        <button onClick={() => setIsSettingsOpen(false)} className="bg-gray-300 hover:bg-gray-400 font-bold py-2 px-4 rounded">閉じる</button>
+                                        <button onClick={() => setIsSettingsOpen(false)} className="bg-gray-300 hover:bg-gray-400 font-bold py-2 px-4 rounded mr-2">キャンセル</button>
+                                        <button onClick={handleSaveSettings} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">保存して閉じる</button>
                                     </div>
                                 </div>
                             </div>
