@@ -22,7 +22,7 @@
         @media print {
             @page {
                 size: A4 landscape; /* A4 横向き */
-                margin: 15mm;       /* 余白 */
+                margin: 10mm 15mm;  /* 上下10mm, 左右15mmにして縦幅を確保 */
             }
             body {
                 background-color: white !important;
@@ -284,10 +284,10 @@
                     {/* メインコンテンツ */}
                     <main id="pdf-content" className="w-full max-w-6xl mx-auto px-4 mt-6">
                         
-                        {/* 印刷時のみ表示されるタイトル */}
-                        <div className="hidden print:block mb-6 text-center">
-                            <h2 className="text-2xl font-bold text-gray-800">北谷第二小学校 個人面談予約表</h2>
-                            <p className="text-xl mt-1 font-bold text-gray-700">{selectedGrade}年 {selectedClass}組</p>
+                        {/* 印刷時のみ表示されるタイトル（1行にまとめる） */}
+                        <div className="hidden print:flex mb-4 justify-center items-baseline gap-6">
+                            <h2 className="text-2xl font-bold text-gray-800 m-0">北谷第二小学校 個人面談予約表</h2>
+                            <p className="text-xl font-bold text-gray-700 m-0">{selectedGrade}年 {selectedClass}組</p>
                         </div>
 
                         {!selectedGrade || !selectedClass ? (
@@ -580,5 +580,3 @@
     </script>
 </body>
 </html>
-
-```
